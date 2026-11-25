@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Survey Progress Viewer</title>
+<style>
+:root{color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#0a0e16;--panel:#121927;--line:#243047;--text:#d9e0ee;--muted:#8592a8;--accent:#6ea8ff;
+--none:#566178;--part:#f5a524;--done:#3ddc97;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:20px clamp(12px,3vw,32px) 40px;max-width:1400px;margin:0 auto}
+h1{font-size:20px;margin:0;font-weight:600;letter-spacing:.2px}
+h2{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600}
+.sub{color:var(--muted);font-size:12px;margin-top:2px}
+header{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end;margin-bottom:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpi .v{font:600 26px var(--mono);margin-top:2px}.kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.kpi .s{font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:12px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:12px}
+#mapwrap{position:relative}
+svg{display:block;width:100%;height:auto}
+#map{cursor:grab;touch-action:none;background:#070a11;border-radius:8px}
+#map:active{cursor:grabbing}
+.hint{font-size:11px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+button,select,input{font:inherit;color:var(--text);background:#0d1320;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+button{cursor:pointer}button:hover{border-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;cursor:pointer;user-select:none;font-size:12px;background:#0d1320}
+.chip.on{border-color:var(--accent);background:#16233d}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.row{margin:10px 0}
+.row label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.bar{display:grid;grid-template-columns:34px 1fr;gap:8px;align-items:center;margin:9px 0;cursor:pointer;padding:3px 4px;border-radius:6px}
+.bar.sel{background:#16233d}
+.bar .n{font:600 13px var(--mono)}
+.track{height:10px;background:#0b1019;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.fill{height:100%;background:linear-gradient(90deg,#3b82f6,#6ea8ff)}
+.bar .t{grid-column:2;font-size:11px;color:var(--muted);margin-top:-4px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+tr.hl td{background:#16233d}
+.tw{overflow-x:auto}
+.sets{display:inline-flex;gap:3px}.sets i{width:12px;height:12px;border-radius:3px;display:inline-block;background:var(--none)}
+.sets i.p{background:var(--part)}.sets i.d{background:var(--done)}
+.mini{display:inline-block;width:70px;height:6px;background:#0b1019;border-radius:3px;overflow:hidden;vertical-align:middle;margin-right:6px}
+.mini b{display:block;height:100%}
+#tip{position:fixed;pointer-events:none;z-index:20;background:#0d1320ee;border:1px solid var(--accent);border-radius:8px;padding:8px 10px;font-size:12px;display:none;max-width:260px}
+#tip .id{font:600 13px var(--mono);margin-bottom:3px}
+#tip div{color:var(--muted)}#tip div b{color:var(--text);font-weight:500}
+.mono{font-family:var(--mono)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.assume{font-size:11px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Survey Progress Viewer</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="chips"><label class="chip" style="cursor:pointer">Load obs log…<input id="file" type="file" accept=".csv,text/csv" hidden></label><label class="chip" style="cursor:pointer">Load pointings…<input id="file2" type="file" accept=".csv,text/csv" hidden></label></div>
+</header>
+
+<section class="kpis" id="kpis"></section>
+
+<div class="grid">
+  <div class="stack">
+    <div class="panel">
+      <h2>All-sky map · Galactic coordinates · Mollweide</h2>
+      <div id="mapwrap"><svg id="map" viewBox="0 0 1000 500"></svg></div>
+      <div class="hint"><span>Scroll to zoom · drag to pan · hover a tile for details</span><label>Map centre l = <select id="ctr"><option value="180" selected>180°</option><option value="0">0°</option></select></label><button id="reset">Reset view</button></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel">
+      <h2 id="charttitle">Cumulative observations</h2>
+      <svg id="chart" viewBox="0 0 900 260"></svg>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="panel">
+      <h2>Filters</h2>
+      <div class="row"><label>Status</label><div class="chips" id="statusChips"></div></div>
+      <div class="row"><label>Band (spectrograph arm) used for progress</label><div class="chips" id="bandChips"></div></div>
+      <div class="row"><label>Target EET per arm per tile (hours)</label><input id="tgt" type="number" min="0.1" step="0.25" value="3" style="width:90px"></div>
+      <div class="assume" id="assume"></div>
+    </div>
+    <div class="panel">
+      <h2>Progress by band</h2>
+      <div id="bands"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:12px">
+  <h2>Tiles</h2>
+  <div class="tw"><table id="tbl"></table></div>
+</div>
+<div id="tip"></div>
+
+<script>
+const LOG_URL = 'obslog/master_obslog_outerMW.csv', PLAN_URL = 'fields/disk_pointings_l_b_ra_dec.csv';
+const f0 = x => { const a=Math.abs(x); let r=Math.round(a); if(a%1===0.5 && r%2) r--; return String(r); };  // same rounding as Python's {:.0f}
+function buildPlanned(text){
+  return parseCSV(text).filter(r=>r.l!==undefined&&r.l!=='').map(r=>{const l=+r.l,b=+r.b;
+    return {id:`l${f0(l)}_b${b<0?'m':''}${f0(b)}`,l,b,ra:+r.ra,dec:+r.dec};});
+}
+async function loadURL(u){const r=await fetch(u,{cache:'no-cache'});if(!r.ok)throw new Error(u+' ('+r.status+')');return r.text();}
+let PLANNED = [];
+const NSETS = 6, SETSEC = 1800, ARMS = ['b','r','n','m'], REQ_ARMS = ['b','m'];
+const COL = {none:'#566178', part:'#f5a524', done:'#3ddc97'};
+const STATUS = [['none','Not started'],['part','In progress'],['done','Complete']];
+const ARMNAME = {b:'Blue',r:'Red',n:'NIR',m:'Medium-res'};
+const state = {rows:[], status:new Set(['none','part','done']), band:'all', tgt:3,center:180,req:[],unmatched:0, k:1, tx:0, ty:0, hl:null};
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+const NAME_RE = /_l(\d+)_b(m?)(\d+)_.*P\d+V(\d+)$/;
+
+function parseCSV(text){
+  const out=[];let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true;
+    else if(c===','){row.push(f);f='';}
+    else if(c==='\n'||c==='\r'){ if(c==='\r'&&text[i+1]==='\n')i++; row.push(f);f=''; if(row.length>1||row[0]!=='')out.push(row); row=[]; }
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);out.push(row);}
+  const head=out[0].map(h=>h.replace(/^#\s*/,'').trim());
+  return out.slice(1).map(r=>{const o={};head.forEach((h,i)=>o[h]=r[i]);return o;});
+}
+const num = v => { const x = parseFloat(v); return isFinite(x) ? x : NaN; };
+
+function compute(rows, band, tgtH){
+  const tiles = new Map(), valid = {b:false,r:false,n:false,m:false};
+  for(const p of PLANNED) tiles.set(p.id,{...p,sets:{},rows:[],exp:0,eet:{b:0,r:0,n:0,m:0},nEet:{b:0,r:0,n:0,m:0},last:''});
+  state.unmatched = 0;
+  for(const r of rows){
+    const m = NAME_RE.exec(r.sequence_name||''); if(!m){state.unmatched++;continue;}
+    const t = tiles.get(`l${m[1]}_b${m[2]}${m[3]}`); if(!t){state.unmatched++;continue;}
+    const v = +m[4], exp = num(r.avg_exptime)||0;
+    const S = t.sets[v] || (t.sets[v] = {b:0,r:0,n:0,m:0});
+    t.exp += exp;
+    const d = (r.issued_at||'').slice(0,10); if(d>t.last) t.last=d;
+    const e = {};
+    for(const a of ARMS){ const x=num(r['eet_'+a]); e[a]=x>0?x:0; if(x>0){S[a]+=x;t.eet[a]+=x;t.nEet[a]++;valid[a]=true;} }
+    t.rows.push({date:d, exp, eet:e, seeing:num(r.seeing_median)});
+  }
+  const req = REQ_ARMS; state.req = req;
+  for(const t of tiles.values()){
+    const sp = Array.from({length:NSETS},(_,i)=>{const S=t.sets[i]; return S&&req.length ? req.reduce((a,x)=>a+Math.min(1,S[x]/SETSEC),0)/req.length : 0;});
+    t.setState = sp.map(p=>p>=0.999?'d':p>0?'p':'n');
+    const allP = sp.reduce((a,b)=>a+b,0)/NSETS;
+    t.progress = band==='all' ? allP : Math.min(1, t.eet[band]/3600/tgtH);
+    t.status = t.progress<=0 ? 'none' : t.progress>=0.999 ? 'done' : 'part';
+  }
+  return [...tiles.values()].sort((a,b)=>a.l-b.l||a.b-b.b);
+}
+
+/* ---------- Mollweide ---------- */
+const W=1000,H=500,SX=W/(4*Math.SQRT2),SY=H/(2*Math.SQRT2);
+function mollLP(lam,phi0){
+  const phi=phi0*Math.PI/180; let th=phi;
+  if(Math.abs(phi)<Math.PI/2-1e-9){ for(let i=0;i<30;i++){const f=2*th+Math.sin(2*th)-Math.PI*Math.sin(phi),d=2+2*Math.cos(2*th); if(Math.abs(d)<1e-9)break; th-=f/d;} } else th=Math.sign(phi)*Math.PI/2;
+  return [W/2+(2*Math.SQRT2/Math.PI)*lam*Math.cos(th)*SX, H/2-Math.SQRT2*Math.sin(th)*SY];
+}
+function proj(l,b){ const d=(((l-state.center+180)%360)+360)%360-180; return mollLP(-d*Math.PI/180,b); }
+const mk=(tag,attrs={},parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+let gMap, gTiles, labels=[], markers=[];
+function pathFrom(pts){return pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');}
+function buildMap(){
+  const svg=$('#map'); svg.innerHTML='';
+  gMap=mk('g',{},svg);
+  const outline=[];for(let b=-90;b<=90;b+=3)outline.push(mollLP(Math.PI,b));for(let b=90;b>=-90;b-=3)outline.push(mollLP(-Math.PI,b));
+  mk('path',{d:pathFrom(outline)+'Z',fill:'#0c1220',stroke:'#3a4967','stroke-width':1.2,'vector-effect':'non-scaling-stroke'},gMap);
+  for(let d=-150;d<=150;d+=30){const p=[];for(let b=-90;b<=90;b+=3)p.push(mollLP(-d*Math.PI/180,b));mk('path',{d:pathFrom(p),fill:'none',stroke:'#1b2640','stroke-width':.8,'vector-effect':'non-scaling-stroke'},gMap);}
+  for(let b=-60;b<=60;b+=30){const p=[];for(let d=-180;d<=180;d+=3)p.push(mollLP(-d*Math.PI/180,b));mk('path',{d:pathFrom(p),fill:'none',stroke:b===0?'#6b5b2e':'#1b2640','stroke-width':b===0?1.4:.8,'stroke-dasharray':b===0?'5 4':'', 'vector-effect':'non-scaling-stroke'},gMap);}
+  labels=[];
+  for(let d=-150;d<=150;d+=30){const [x,y]=mollLP(-d*Math.PI/180,0);const t=mk('text',{x,y:y+11,'text-anchor':'middle',fill:'#6c7a95'},gMap);t.textContent=((state.center+d+360)%360)+'°';labels.push(t);}
+  for(const b of [-60,-30,30,60]){const [x,y]=mollLP(-Math.PI,b);const t=mk('text',{x:x+4,y:y-3,fill:'#6c7a95'},gMap);t.textContent=(b>0?'+':'')+b+'°';labels.push(t);}
+  gTiles=mk('g',{},gMap);
+  applyView();
+}
+function applyView(){
+  gMap.setAttribute('transform',`translate(${state.tx} ${state.ty}) scale(${state.k})`);
+  labels.forEach(t=>t.style.fontSize=(10/state.k)+'px');
+  markers.forEach(m=>m.setAttribute('r',Math.max(3.5/state.k,1.9)));
+}
+function svgPt(ev){const s=$('#map');const p=s.createSVGPoint();p.x=ev.clientX;p.y=ev.clientY;return p.matrixTransform(s.getScreenCTM().inverse());}
+(function(){
+  const s=$('#map');let drag=null;
+  s.addEventListener('wheel',e=>{e.preventDefault();const p=svgPt(e);const k2=Math.min(60,Math.max(1,state.k*(e.deltaY<0?1.25:0.8)));
+    state.tx=p.x-(p.x-state.tx)*(k2/state.k);state.ty=p.y-(p.y-state.ty)*(k2/state.k);state.k=k2;if(k2===1){state.tx=0;state.ty=0;}applyView();},{passive:false});
+  s.addEventListener('pointerdown',e=>{drag={p:svgPt(e),tx:state.tx,ty:state.ty};s.setPointerCapture(e.pointerId);});
+  s.addEventListener('pointermove',e=>{if(!drag)return;const p=svgPt(e);state.tx=drag.tx+p.x-drag.p.x;state.ty=drag.ty+p.y-drag.p.y;applyView();});
+  s.addEventListener('pointerup',()=>drag=null);
+  $('#ctr').onchange=e=>{state.center=+e.target.value;state.k=1;state.tx=0;state.ty=0;buildMap();render();};
+  $('#reset').onclick=()=>{state.k=1;state.tx=0;state.ty=0;applyView();};
+})();
+
+/* ---------- Rendering ---------- */
+const fmtH = s => (s/3600).toFixed(1);
+const median = a => {a=a.filter(isFinite).sort((x,y)=>x-y);return a.length?a[Math.floor(a.length/2)]:NaN;};
+function tipHTML(t){
+  const sec=t.setState.map((s,i)=>`V${String(i).padStart(2,'0')}:${s==='d'?'✔':s==='p'?'◐':'·'}`).join(' ');
+  const seeing=median(t.rows.map(r=>r.seeing));
+  return `<div class="id">${t.id}</div><div>(l, b) = <b>${t.l}°, ${t.b}°</b></div>
+  <div>(RA, Dec) = <b>${t.ra.toFixed(2)}°, ${t.dec.toFixed(2)}°</b></div>
+  <div>Progress <b>${(t.progress*100).toFixed(0)}%</b> · ${STATUS.find(s=>s[0]===t.status)[1]}</div>
+  <div>Visit sets <b class="mono">${sec}</b></div>
+  <div>Visits <b>${t.rows.length}</b> · Exposure <b>${fmtH(t.exp)} h</b></div>
+  <div>Median seeing <b>${isFinite(seeing)?seeing.toFixed(2)+'″':'–'}</b> · Last obs <b>${t.last||'–'}</b></div>`;
+}
+function showTip(e,t){const tip=$('#tip');tip.innerHTML=tipHTML(t);tip.style.display='block';
+  const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX+14,y=e.clientY+14;if(x+w>innerWidth-8)x=e.clientX-w-14;if(y+h>innerHeight-8)y=e.clientY-h-14;tip.style.left=x+'px';tip.style.top=y+'px';}
+const hideTip=()=>$('#tip').style.display='none';
+
+function setHL(id){state.hl=id;markers.forEach(m=>m.setAttribute('stroke',m._id===id?'#fff':'#0a0e16'));document.querySelectorAll('#tbl tr[data-id]').forEach(r=>r.classList.toggle('hl',r.dataset.id===id));}
+
+function render(){
+  const all = compute(state.rows, state.band, state.tgt);
+  const vis = all.filter(t=>state.status.has(t.status));
+  // subtitle + KPIs
+  const dates = state.rows.map(r=>(r.issued_at||'').slice(0,10)).filter(Boolean).sort();
+  $('#subtitle').textContent = `${state.rows.length} visits · ${all.length} planned tiles${state.unmatched?` · ${state.unmatched} visits not matched to a planned tile`:''} · ${dates[0]||'–'} → ${dates[dates.length-1]||'–'}`;
+  const overall = vis.length ? vis.reduce((a,t)=>a+t.progress,0)/vis.length : 0;
+  const nVis = vis.reduce((a,t)=>a+t.rows.length,0), expS = vis.reduce((a,t)=>a+t.exp,0);
+  const seeing = median(vis.flatMap(t=>t.rows.map(r=>r.seeing)));
+  const nDone = vis.filter(t=>t.status==='done').length;
+  $('#assume').innerHTML = `A tile needs ${NSETS} visit sets (V00–V05). A set is complete when the EET of both the ${state.req.map(a=>a.toUpperCase()).join(' and ')} arms is ≥ ${SETSEC} s. The R and N arms are not used for completion. Per-arm progress (bars, band filter) is summed EET ÷ target per tile.`;
+  const bandLbl = state.band==='all'?'visit-set EET (B and M arms)':ARMNAME[state.band]+' arm EET';
+  $('#kpis').innerHTML = [
+    ['Overall completion',(overall*100).toFixed(1)+'%',bandLbl],
+    ['Tiles complete',`${nDone} / ${vis.length}`,'in current filter'],
+    ['Visits',nVis,'exposures logged'],
+    ['Exposure time',fmtH(expS)+' h','nominal, from log'],
+    ['Median seeing',isFinite(seeing)?seeing.toFixed(2)+'″':'–','per-visit median']
+  ].map(([l,v,s])=>`<div class="panel kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+
+  // map markers
+  gTiles.innerHTML=''; markers=[];
+  [...vis].sort((a,b)=>STATUS.findIndex(s=>s[0]===a.status)-STATUS.findIndex(s=>s[0]===b.status)).forEach(t=>{
+    const [x,y]=proj(t.l,t.b);
+    const c=mk('circle',{cx:x,cy:y,fill:COL[t.status],stroke:'#0a0e16','stroke-width':1,'vector-effect':'non-scaling-stroke',style:'cursor:pointer'},gTiles);
+    c._id=t.id;markers.push(c);
+    c.addEventListener('pointermove',e=>{showTip(e,t);setHL(t.id);});
+    c.addEventListener('pointerleave',()=>{hideTip();setHL(null);});
+  });
+  applyView();
+  $('#legend').innerHTML = STATUS.map(([k,n])=>`<span><i class="dot" style="background:${COL[k]}"></i> ${n} (${all.filter(t=>t.status===k).length})</span>`).join('') + '<span style="color:#b9a35a">- - Galactic plane (b = 0°)</span>';
+
+  // band bars
+  const tgtS = state.tgt*3600;
+  $('#bands').innerHTML = ARMS.map(a=>{
+    const tot=vis.reduce((s,t)=>s+t.eet[a],0), n=vis.reduce((s,t)=>s+t.nEet[a],0), tgt=tgtS*vis.length;
+    const pct = tgt?Math.min(100,tot/tgt*100):0;
+    return `<div class="bar ${state.band===a?'sel':''}" data-band="${a}"><div class="n">${a.toUpperCase()}</div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="t">${n? `${(tot/3600).toFixed(1)} h of ${(tgt/3600).toFixed(1)} h · ${pct.toFixed(0)}% · ${n} visits` : 'No valid EET data'}</div></div>`;
+  }).join('');
+  document.querySelectorAll('.bar').forEach(el=>el.onclick=()=>{state.band=state.band===el.dataset.band?'all':el.dataset.band;syncBandChips();render();});
+
+  // table
+  $('#tbl').innerHTML = `<tr><th>Tile</th><th>l</th><th>b</th><th>RA</th><th>Dec</th><th>Visit sets</th><th>Progress</th><th>Visits</th><th>Exp (h)</th><th>Last obs</th></tr>` +
+    vis.map(t=>`<tr data-id="${t.id}"><td class="mono">${t.id}</td><td>${t.l}°</td><td>${t.b}°</td><td>${t.ra.toFixed(2)}°</td><td>${t.dec.toFixed(2)}°</td>
+    <td><span class="sets">${t.setState.map(s=>`<i class="${s==='n'?'':s}"></i>`).join('')}</span></td>
+    <td><span class="mini"><b style="width:${t.progress*100}%;background:${COL[t.status]}"></b></span>${(t.progress*100).toFixed(0)}%</td>
+    <td>${t.rows.length}</td><td>${fmtH(t.exp)}</td><td>${t.last||'–'}</td></tr>`).join('');
+  document.querySelectorAll('#tbl tr[data-id]').forEach(r=>{r.onmouseenter=()=>setHL(r.dataset.id);r.onmouseleave=()=>setHL(null);});
+
+  drawChart(vis);
+}
+
+function drawChart(vis){
+  const svg=$('#chart');svg.innerHTML='';
+  const arm=state.band;
+  const byDay=new Map();
+  vis.forEach(t=>t.rows.forEach(r=>{if(!r.date)return;const v=arm==='all'?1:r.eet[arm]/3600;byDay.set(r.date,(byDay.get(r.date)||0)+v);}));
+  $('#charttitle').textContent = arm==='all'?'Cumulative visits by date':`Cumulative ${ARMNAME[arm]} EET (hours) by date`;
+  const days=[...byDay.keys()].sort();
+  if(!days.length){mk('text',{x:450,y:130,'text-anchor':'middle',fill:'#8592a8'},svg).textContent='No data in current filter';return;}
+  const L=48,R=48,T=14,B=28,w=900-L-R,h=260-T-B;
+  const t0=Date.parse(days[0]),t1=Math.max(Date.parse(days[days.length-1]),t0+86400000);
+  const X=d=>L+(Date.parse(d)-t0)/(t1-t0)*w;
+  let cum=0;const pts=days.map(d=>{cum+=byDay.get(d);return [d,cum];});
+  const maxC=cum||1,maxD=Math.max(...byDay.values())||1;
+  const Yc=v=>T+h-(v/maxC)*h, Yd=v=>T+h-(v/maxD)*h*.5;
+  for(let i=0;i<=4;i++){const y=T+h*i/4;mk('line',{x1:L,x2:L+w,y1:y,y2:y,stroke:'#1b2640'},svg);
+    mk('text',{x:L-6,y:y+4,'text-anchor':'end',fill:'#8592a8','font-size':11},svg).textContent=(maxC*(1-i/4)).toFixed(arm==='all'?0:1);
+    mk('text',{x:L+w+6,y:y+4,fill:'#8592a8','font-size':11},svg).textContent=i<=2?(maxD*(1-i/2)).toFixed(arm==='all'?0:1):'';}
+  for(let i=0;i<=5;i++){const t=t0+(t1-t0)*i/5;mk('text',{x:L+w*i/5,y:T+h+18,'text-anchor':'middle',fill:'#8592a8','font-size':11},svg).textContent=new Date(t).toISOString().slice(0,10);}
+  const bw=Math.max(2,Math.min(10,w/Math.max(60,days.length*1.4)));
+  days.forEach(d=>mk('rect',{x:X(d)-bw/2,y:Yd(byDay.get(d)),width:bw,height:T+h-Yd(byDay.get(d)),fill:'#3b5a99',opacity:.75},svg).appendChild(Object.assign(document.createElementNS(NS,'title'),{textContent:`${d}: ${byDay.get(d).toFixed(arm==='all'?0:1)}`})));
+  let d='';pts.forEach(([day,c],i)=>{const x=X(day),y=Yc(c);d+=(i?`H${x.toFixed(1)}V${y.toFixed(1)}`:`M${L} ${T+h}H${x.toFixed(1)}V${y.toFixed(1)}`);});
+  d+=`H${L+w}`;
+  mk('path',{d,fill:'none',stroke:'#6ea8ff','stroke-width':2},svg);
+  mk('text',{x:L+w-4,y:T+12,'text-anchor':'end',fill:'#6ea8ff','font-size':11},svg).textContent='— cumulative (left axis)';
+  mk('text',{x:L+w-4,y:T+26,'text-anchor':'end',fill:'#5f82c4','font-size':11},svg).textContent='▮ per day (right axis)';
+}
+
+/* ---------- Controls ---------- */
+function buildChips(){
+  $('#statusChips').innerHTML=STATUS.map(([k,n])=>`<span class="chip ${state.status.has(k)?'on':''}" data-k="${k}"><i class="dot" style="background:${COL[k]}"></i>${n}</span>`).join('');
+  document.querySelectorAll('#statusChips .chip').forEach(c=>c.onclick=()=>{const k=c.dataset.k;state.status.has(k)?state.status.delete(k):state.status.add(k);c.classList.toggle('on');render();});
+  $('#bandChips').innerHTML=[['all','All'],...ARMS.map(a=>[a,a.toUpperCase()])].map(([k,n])=>`<span class="chip" data-b="${k}">${n}</span>`).join('');
+  document.querySelectorAll('#bandChips .chip').forEach(c=>c.onclick=()=>{state.band=c.dataset.b;syncBandChips();render();});
+  syncBandChips();
+}
+function syncBandChips(){document.querySelectorAll('#bandChips .chip').forEach(c=>c.classList.toggle('on',c.dataset.b===state.band));}
+$('#tgt').addEventListener('input',e=>{const v=parseFloat(e.target.value);if(v>0){state.tgt=v;render();}});
+$('#file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{state.rows=parseCSV(t);render();});});
+
+$('#file2').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{PLANNED=buildPlanned(t);render();});});
+buildMap();buildChips();render();
+(async()=>{
+  try{ PLANNED=buildPlanned(await loadURL(PLAN_URL)); state.rows=parseCSV(await loadURL(LOG_URL)); }
+  catch(err){ $('#subtitle').textContent='Could not load the CSV files ('+err.message+'). Serve this folder over HTTP, or use the Load buttons.'; return; }
+  render();
+})();
+</script>
+</body>
+</html>
